@@ -1,0 +1,33 @@
+version: '3.8'
+services:
+  # MongoDB
+  mongo:
+    image: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  # Redis (Needed for BullMQ and Caching)
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  # MinIO (Replaces Cloudinary for Video Storage)
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: "minioadmin"
+      MINIO_ROOT_PASSWORD: "minioadmin"
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./minio_storage:/data
+
+volumes:
+  mongo_data:
+  minio_data:
