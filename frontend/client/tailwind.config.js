@@ -4,13 +4,10 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+   darkMode: 'class',
   theme: {
-    extend: {
-        colors: {
-            primary: "#AE7AFF", // Your brand color (Purple)
-            secondary: "#121212", // Dark background
-        }
-    },
+   
+    extend: {},
   },
   plugins: [],
 }

@@ -56,59 +56,47 @@ const worker = new Worker("video-transcoding", async (job) => {
         // Update DB status
         await Video.findByIdAndUpdate(videoId, { status: "processing" });
 
-        // --- STEP 1: TRANSCODING ---
-        // Convert video into 3 versions (360p, 720p, 1080p)
-        await new Promise((resolve, reject) => {
-            ffmpeg(videoPath)
-                // Version 1: 360p (Low Quality / Mobile)
-                .output(path.join(outputDir, '360p', 'index.m3u8'))
-                .videoCodec('libx264')
-                .audioCodec('aac')
-                .size('640x360')
-                .outputOptions([
-                    '-hls_time 10',
-                    '-hls_list_size 0',
-                    '-b:v 800k',      // Bitrate: 800 kbps
-                    '-maxrate 856k',
-                    '-bufsize 1200k',
-                    '-f hls'
-                ])
+        // --- STEP 1: TRANSCODING (PARALLEL PROCESSING) ---
+        // We create a helper function to run FFmpeg independently for each quality
+        const transcodeQuality = (folderName, resolution, bitrate, maxrate, bufsize) => {
+            return new Promise((resolve, reject) => {
+                ffmpeg(videoPath)
+                    .output(path.join(outputDir, folderName, 'index.m3u8'))
+                    .videoCodec('libx264')
+                    .audioCodec('aac')
+                    .size(resolution) // This will now correctly resize the video!
+                    .outputOptions([
+                        '-hls_time 2',    // 2-second chunks for fast quality switching
+                        '-hls_list_size 0',
+                        `-b:v ${bitrate}`,
+                        `-maxrate ${maxrate}`,
+                        `-bufsize ${bufsize}`,
+                        '-f hls'
+                    ])
+                    .on("end", () => {
+                        console.log(`✅ Finished processing: ${folderName}`);
+                        resolve();
+                    })
+                    .on("error", (err) => {
+                        console.error(`❌ Error processing ${folderName}:`, err);
+                        reject(err);
+                    })
+                    .run();
+            });
+        };
 
-                // Version 2: 720p (HD / Laptop)
-                .output(path.join(outputDir, '720p', 'index.m3u8'))
-                .videoCodec('libx264')
-                .audioCodec('aac')
-                .size('1280x720')
-                .outputOptions([
-                    '-hls_time 10',
-                    '-hls_list_size 0',
-                    '-b:v 2500k',     // Bitrate: 2.5 Mbps
-                    '-maxrate 2675k',
-                    '-bufsize 3750k',
-                    '-f hls'
-                ])
-
-                // Version 3: 1080p (Full HD / TV)
-                .output(path.join(outputDir, '1080p', 'index.m3u8'))
-                .videoCodec('libx264')
-                .audioCodec('aac')
-                .size('1920x1080')
-                .outputOptions([
-                    '-hls_time 10',
-                    '-hls_list_size 0',
-                    '-b:v 5000k',     // Bitrate: 5 Mbps
-                    '-maxrate 5350k',
-                    '-bufsize 7500k',
-                    '-f hls'
-                ])
-
-                .on("end", () => resolve())
-                .on("error", (err) => reject(err))
-                .run();
-        });
+        console.log("Starting parallel transcoding...");
+        
+        // Run all 3 conversions at the exact same time
+        await Promise.all([
+            transcodeQuality('360p', '640x360', '800k', '856k', '1200k'),
+            transcodeQuality('720p', '1280x720', '2500k', '2675k', '3750k'),
+            transcodeQuality('1080p', '1920x1080', '5000k', '5350k', '7500k')
+        ]);
+        
+        console.log("All transcoding finished!");
 
         // --- STEP 2: CREATE MASTER PLAYLIST ---
-        // This file tells the video player about the available qualities
         const masterPlaylistContent = `
 #EXTM3U
 #EXT-X-VERSION:3
@@ -123,7 +111,6 @@ const worker = new Worker("video-transcoding", async (job) => {
         fs.writeFileSync(path.join(outputDir, 'master.m3u8'), masterPlaylistContent);
 
         // --- STEP 3: UPLOAD TO MINIO ---
-        // Helper function to upload a folder recursively
         const uploadFolder = async (folderName) => {
             const folderPath = path.join(outputDir, folderName);
             const files = fs.readdirSync(folderPath);
@@ -132,7 +119,6 @@ const worker = new Worker("video-transcoding", async (job) => {
                 const filePath = path.join(folderPath, file);
                 const minioPath = `${videoId}/${folderName}/${file}`;
                 
-                // Correct Content-Type is crucial for playback
                 const contentType = file.endsWith('.m3u8') ? 'application/x-mpegURL' : 'video/MP2T';
                 
                 await minioClient.fPutObject(bucketName, minioPath, filePath, { 'Content-Type': contentType });
@@ -166,7 +152,6 @@ const worker = new Worker("video-transcoding", async (job) => {
         // Cleanup: Delete local temp files
         fs.rmSync(outputDir, { recursive: true, force: true });
         
-        // Only delete the original file if it exists (sometimes multer cleans it up differently)
         if (fs.existsSync(videoPath)) {
             fs.unlinkSync(videoPath);
         }
@@ -175,7 +160,7 @@ const worker = new Worker("video-transcoding", async (job) => {
         console.error("Transcoding failed:", error);
         await Video.findByIdAndUpdate(videoId, { status: "failed" });
         
-        // Cleanup on failure too, to save space
+        // Cleanup on failure too
         if (fs.existsSync(outputDir)) {
             fs.rmSync(outputDir, { recursive: true, force: true });
         }

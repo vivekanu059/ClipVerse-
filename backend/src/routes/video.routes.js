@@ -15,7 +15,7 @@ router.route("/upload").post(verifyJWT,upload.fields(
 router.route("/").get(getAllVideos);
 
 // get specific video
-router.route("/:videoId").get(getVideoById);
+router.route("/:videoId").get(verifyJWT, getVideoById);
 
 // update&delete
 
