@@ -18,6 +18,27 @@ const minioClient = new Client({
     secretKey: "minioadmin",
 });
 
+const makeBucketPublic = async () => {
+    try {
+        const policy = {
+            Version: "2012-10-17",
+            Statement: [
+                {
+                    Effect: "Allow",
+                    Principal: { AWS: ["*"] },
+                    Action: ["s3:GetObject"],
+                    Resource: ["arn:aws:s3:::videos/*"],
+                },
+            ],
+        };
+        await minioClient.setBucketPolicy("videos", JSON.stringify(policy));
+        console.log("✅ MinIO 'videos' bucket policy set to Public Read-Only");
+    } catch (error) {
+        console.error("⚠️ Could not set MinIO bucket policy:", error.message);
+    }
+};
+makeBucketPublic();
+
 // upload video
 const uploadVideo = asyncHandler(async (req, res) => {
     const { title, description } = req.body;

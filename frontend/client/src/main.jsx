@@ -3,6 +3,7 @@ import 'video.js/dist/video-js.css'; // <--- Kept safely here
 import ReactDOM from 'react-dom/client'
 import { Provider } from 'react-redux'
 import { RouterProvider, createBrowserRouter } from 'react-router-dom'
+import { GoogleOAuthProvider } from '@react-oauth/google'; // <--- 1. NEW IMPORT
 import store from './store/store.js'
 import Layout from './Layout.jsx'
 import Home from './pages/Home.jsx'
@@ -16,9 +17,8 @@ import { Toaster } from 'react-hot-toast'
 import Search from './pages/Search.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Channel from './pages/Channel.jsx';
-// 1. Import the ThemeProvider
-import { ThemeProvider } from './context/ThemeContext.jsx' // Ensure this path matches your folder structure!
-import WatchHistory from './pages/History.jsx';
+import { ThemeProvider } from './context/ThemeContext.jsx' 
+import WatchHistory from './pages/History.jsx'; // 
 
 const router = createBrowserRouter([
   {
@@ -30,7 +30,7 @@ const router = createBrowserRouter([
       { path: "/signup", element: <Signup /> },
       { path: "/watch/:videoId", element: <VideoDetail /> },
       {
-        path: "/search/:query", // 
+        path: "/search/:query",  
         element: <Search />,
       },
       { 
@@ -58,11 +58,13 @@ const router = createBrowserRouter([
 ])
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <Provider store={store}>
-    {/* 2. Wrap the RouterProvider with the ThemeProvider */}
-    <ThemeProvider>
-      <RouterProvider router={router} />
-      <Toaster position="top-right" />
-    </ThemeProvider>
-  </Provider>,
+  // 2. Wrap EVERYTHING in the GoogleOAuthProvider
+  <GoogleOAuthProvider clientId="191082218634-nsllh0vnumrpncaecdm3sbop64b3h2a9.apps.googleusercontent.com">
+    <Provider store={store}>
+      <ThemeProvider>
+        <RouterProvider router={router} />
+        <Toaster position="top-right" />
+      </ThemeProvider>
+    </Provider>
+  </GoogleOAuthProvider>
 )

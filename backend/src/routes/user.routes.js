@@ -3,6 +3,7 @@ import {loginUser, logoutUser, registerUser,refreshAccessToken, changeCurrentPas
 import { upload } from "../middlewares/multer.middlewares.js";
 import {verifyJWT} from "../middlewares/auth.middleware.js";
 import { clearWatchHistory } from "../controllers/user.controllers.js";
+import { googleAuth } from "../controllers/user.controllers.js";
 
 const router =Router();
 
@@ -21,7 +22,7 @@ router.route("/register").post(
   ]),
   registerUser,
 )
-
+router.route("/google-auth").post(googleAuth);
 router.route("/login").post(loginUser);
 
 router.route("/logout").post(verifyJWT,logoutUser);

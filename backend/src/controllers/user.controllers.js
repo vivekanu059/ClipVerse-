@@ -4,6 +4,68 @@ import { User } from "../models/userModel.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import jwt from "jsonwebtoken";
+import { OAuth2Client } from "google-auth-library";
+
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+// google auth
+const googleAuth = asyncHandler(async (req, res) => {
+    const { credential } = req.body; // The token sent from React
+
+    if (!credential) {
+        throw new ApiError(400, "Google token is missing");
+    }
+
+    // 1. Verify the token with Google
+    const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    // 2. Extract user data from Google's payload
+    const { email, name, picture, sub: googleId } = ticket.getPayload();
+
+    // 3. Check if the user already exists in your database
+    let user = await User.findOne({ email });
+
+    if (!user) {
+        // 4. If they don't exist, create a new account!
+        // We generate a random password since they use Google to log in
+        const generatedPassword = Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10);
+        
+        // Create a unique username based on their name
+        const baseUsername = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const uniqueUsername = `${baseUsername}${Math.floor(Math.random() * 10000)}`;
+
+        user = await User.create({
+            fullName: name,
+            email: email,
+            username: uniqueUsername,
+            password: generatedPassword, // They won't use this, but your schema requires it
+            avatar: picture,
+            coverImage: "", 
+        });
+    }
+
+    // 5. Generate your app's standard JWTs (Reusing your existing function!)
+    const { accessToken, refreshToken } = await generateAccessAndRefreshToken(user._id);
+
+    const loggedInUser = await User.findById(user._id).select("-password -refreshToken");
+
+    // 6. Send the exact same response as your normal login User!
+    return res
+        .status(200)
+        .cookie("accessToken", accessToken, cookieOptions)
+        .cookie("refreshToken", refreshToken, cookieOptions)
+        .json(
+            new ApiResponse(
+                200,
+                { user: loggedInUser, accessToken, refreshToken },
+                "Google authentication successful"
+            )
+        );
+});
+// -------------------------------------------------------------------------
 
 // Generate Access & Refresh Token
 const generateAccessAndRefreshToken = async (userId) => {
@@ -416,5 +478,6 @@ export {
     updateCoverImage, 
     getUserChannelProfile, 
     getWatchHistory ,
-    clearWatchHistory
+    clearWatchHistory,
+    googleAuth
 };
