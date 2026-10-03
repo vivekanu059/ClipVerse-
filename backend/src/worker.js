@@ -7,20 +7,21 @@ import { Client } from "minio";
 import dotenv from "dotenv";
 import { Video } from "./models/videoModel.js"; 
 
-dotenv.config({ path: "./.env" });
+// Updated path to look one directory up (assuming you are running from backend/src)
+dotenv.config({ path: "../.env" });
 
 // 1. Connect to MongoDB (Worker needs its own connection)
 mongoose.connect(`${process.env.MONGODB_URI}/VideoTube`).then(() => {
     console.log("Worker connected to MongoDB");
 }).catch(err => console.error("MongoDB Connection Failed", err));
 
-// 2. Initialize MinIO Client
+// 2. Initialize MinIO Client (Updated for Docker compatibility)
 const minioClient = new Client({
-    endPoint: "127.0.0.1",
-    port: 9000,
-    useSSL: false,
-    accessKey: "minioadmin", 
-    secretKey: "minioadmin",
+    endPoint: process.env.MINIO_ENDPOINT || "127.0.0.1",
+    port: parseInt(process.env.MINIO_PORT) || 9000,
+    useSSL: process.env.MINIO_USE_SSL === 'true' || false,
+    accessKey: process.env.MINIO_ACCESS_KEY || "minioadmin", 
+    secretKey: process.env.MINIO_SECRET_KEY || "minioadmin",
 });
 
 // Ensure bucket exists
@@ -139,7 +140,7 @@ const worker = new Worker("video-transcoding", async (job) => {
         );
 
         // --- STEP 4: FINALIZE ---
-        const masterUrl = `http://localhost:9000/${bucketName}/${videoId}/master.m3u8`;
+       const masterUrl = `http://${process.env.MINIO_ENDPOINT || "127.0.0.1"}:9000/${bucketName}/${videoId}/master.m3u8`;
 
         await Video.findByIdAndUpdate(videoId, {
             videoFile: masterUrl,
@@ -169,7 +170,11 @@ const worker = new Worker("video-transcoding", async (job) => {
         }
     }
 }, {
-    connection: { host: "127.0.0.1", port: 6379 }
+    // Updated Redis connection for Docker compatibility
+    connection: { 
+        host: process.env.REDIS_HOST || "127.0.0.1", 
+        port: parseInt(process.env.REDIS_PORT) || 6379 
+    }
 });
 
 console.log("Worker is running and listening for jobs...");
