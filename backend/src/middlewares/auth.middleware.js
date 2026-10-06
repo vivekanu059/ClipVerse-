@@ -36,4 +36,22 @@ const verifyJWT = asyncHandler(async (req, res, next) => {
   }
 });
 
-export { verifyJWT };
+// For public pages that show extra info when you ARE logged in (isLiked, isSubscribed, your own drafts).
+// Never rejects: no token or a bad token just means "guest".
+const optionalJWT = asyncHandler(async (req, res, next) => {
+  try {
+    const token =
+      req.cookies?.accessToken ||
+      req.header("Authorization")?.replace("Bearer ", "");
+    if (token) {
+      const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+      const user = await User.findById(decoded?._id).select("-password -refreshToken");
+      if (user) req.user = user;
+    }
+  } catch {
+    // ignore, treat as guest
+  }
+  next();
+});
+
+export { verifyJWT, optionalJWT };

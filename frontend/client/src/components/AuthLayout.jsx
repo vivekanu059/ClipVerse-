@@ -1,25 +1,29 @@
-import React, { useEffect, useState } from 'react'
-import { useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
+import React, { useEffect } from 'react';
+import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 
+/**
+ * authentication = true  -> page needs a logged-in user
+ * authentication = false -> page is for guests only (login, signup)
+ */
 export default function AuthLayout({ children, authentication = true }) {
-    const navigate = useNavigate()
-    const [loader, setLoader] = useState(true)
-    const authStatus = useSelector(state => state.auth.status)
+    const navigate = useNavigate();
+    const { status, loading } = useSelector((state) => state.auth);
+    const allowed = !!status === authentication;
+
+    // Protected pages must wait until we know whether the user is logged in (e.g. after a refresh)
+    const waiting = loading && authentication;
 
     useEffect(() => {
-        // if auth is required (true) and user is not logged in (authStatus is false), go to login
-        if (authentication && authStatus !== authentication) {
-            navigate("/login")
-        } 
-        // if auth is not required (false) but user IS logged in, go to home
-        else if (!authentication && authStatus !== authentication) {
-            navigate("/")
-        }
-        
-        const timer = setTimeout(() => setLoader(false), 0)
-        return () => clearTimeout(timer)
-    }, [authStatus, navigate, authentication])
+        if (!waiting && !allowed) navigate(authentication ? '/login' : '/', { replace: true });
+    }, [waiting, allowed, authentication, navigate]);
 
-    return loader ? <h1>Loading...</h1> : <>{children}</>
+    if (waiting || !allowed) {
+        return (
+            <div className="grid min-h-screen place-items-center bg-[#0a0a0c]" role="status" aria-label="Loading">
+                <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/10 border-t-amber-400" />
+            </div>
+        );
+    }
+    return <>{children}</>;
 }

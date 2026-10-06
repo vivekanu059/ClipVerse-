@@ -27,7 +27,7 @@ const addCommentInVideo=asyncHandler(async(req, res)=>{
 const getVideoComments=asyncHandler(async(req,res)=>{
     const{videoId}=req.params;
 
-    const comments=(await Comment.find({video:videoId}).populate("owner","username fullName avatar")).sort({createdAt:-1});
+    const comments=await Comment.find({video:videoId}).sort({createdAt:-1}).populate("owner","username fullName avatar");
     
     return res.status(200).json(new ApiResponse(200,comments,"Comments fetched successfully"));
 });

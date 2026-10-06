@@ -1,202 +1,138 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import axiosInstance from '../utils/axiosInstance';
 import toast from 'react-hot-toast';
-import { FiUploadCloud, FiVideo, FiImage } from 'react-icons/fi';
+import { FiVideo, FiImage, FiCheck } from 'react-icons/fi';
+import axiosInstance from '../utils/axiosInstance';
+
+const mb = (f) => `${(f.size / 1048576).toFixed(1)} MB`;
+
+// Reads the real duration (seconds) from the chosen file's metadata; resolves 0 if it can't
+const getVideoDuration = (file) => new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const el = document.createElement('video');
+    const done = (d) => { URL.revokeObjectURL(url); resolve(Number.isFinite(d) ? Math.round(d) : 0); };
+    el.preload = 'metadata';
+    el.onloadedmetadata = () => done(el.duration);
+    el.onerror = () => done(0);
+    el.src = url;
+});
+
+function DropZone({ icon, title, hint, accept, disabled, error, file, previewUrl, inputProps }) {
+    return (
+        <div>
+            <div className={`group relative flex min-h-[11rem] flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed p-6 text-center transition focus-within:ring-2 focus-within:ring-amber-400 ${error ? 'border-red-500/60' : file ? 'border-amber-400/50 bg-amber-400/[0.04]' : 'border-white/15 hover:border-amber-400/60 hover:bg-white/[0.03]'}`}>
+                {previewUrl && <img src={previewUrl} alt="Thumbnail preview" className="absolute inset-0 h-full w-full object-cover opacity-40" />}
+                <div className="relative">
+                    <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-white/5 text-xl text-amber-400 ring-1 ring-white/10 transition group-hover:scale-110">
+                        {file ? <FiCheck /> : icon}
+                    </span>
+                    <p className="mt-3 text-sm font-semibold text-white">{file ? file.name : title}</p>
+                    <p className="mt-1 text-xs text-zinc-400">{file ? `${mb(file)}. Click to replace.` : hint}</p>
+                </div>
+                <input type="file" accept={accept} disabled={disabled} className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed" {...inputProps} />
+            </div>
+            {error && <p className="mt-1.5 text-xs text-red-400">{error.message}</p>}
+        </div>
+    );
+}
 
 function UploadVideo() {
-    const { register, handleSubmit, reset } = useForm();
-    
-    // UI States
+    const navigate = useNavigate();
+    const { register, handleSubmit, reset, watch, formState: { errors } } = useForm();
     const [loading, setLoading] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState(0);
-    const [isProcessing, setIsProcessing] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [processing, setProcessing] = useState(false);
+    const [thumbUrl, setThumbUrl] = useState(null);
+
+    const videoFile = watch('videoFile')?.[0];
+    const thumbFile = watch('thumbnail')?.[0];
+
+    useEffect(() => {
+        if (!thumbFile) return setThumbUrl(null);
+        const url = URL.createObjectURL(thumbFile);
+        setThumbUrl(url);
+        return () => URL.revokeObjectURL(url);
+    }, [thumbFile]);
 
     const onSubmit = async (data) => {
         setLoading(true);
-        setUploadProgress(0);
-        setIsProcessing(false);
-
+        setProgress(0);
+        setProcessing(false);
         const formData = new FormData();
-        formData.append("title", data.title);
-        formData.append("description", data.description);
-        formData.append("videoFile", data.videoFile[0]);
-        formData.append("thumbnail", data.thumbnail[0]);
-
+        formData.append('title', data.title);
+        formData.append('description', data.description);
+        formData.append('videoFile', data.videoFile[0]);
+        const duration = await getVideoDuration(data.videoFile[0]);
+        if (duration > 0) formData.append('duration', duration);
+        formData.append('thumbnail', data.thumbnail[0]);
         try {
-            await axiosInstance.post("/videos/upload", formData, {
-                headers: { "Content-Type": "multipart/form-data" },
-                // --- PROGRESS TRACKING MAGIC ---
-                onUploadProgress: (progressEvent) => {
-                    const percentCompleted = Math.round(
-                        (progressEvent.loaded * 100) / progressEvent.total
-                    );
-                    setUploadProgress(percentCompleted);
-                    
-                    // Once the network upload is at 100%, the backend is transcoding
-                    if (percentCompleted === 100) {
-                        setIsProcessing(true);
-                    }
-                }
+            await axiosInstance.post('/videos/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                onUploadProgress: (e) => {
+                    if (!e.total) return;
+                    const pct = Math.round((e.loaded * 100) / e.total);
+                    setProgress(pct);
+                    if (pct === 100) setProcessing(true); // upload done, server is transcoding
+                },
             });
-            
-            toast.success("Video uploaded! It is being processed.", { 
-                style: { background: '#4f46e5', color: '#fff' } 
-            });
-            
+            toast.success('Upload complete. Processing has started.');
             reset();
-            setUploadProgress(0);
-            setIsProcessing(false);
+            navigate('/dashboard');
         } catch (error) {
-            toast.error(error.response?.data?.message || "Upload failed");
-            setUploadProgress(0);
-            setIsProcessing(false);
+            toast.error(error.response?.data?.message || 'Upload failed. Try again.');
+            setProgress(0);
+            setProcessing(false);
         } finally {
             setLoading(false);
         }
     };
 
+    const input = (bad) => `w-full rounded-xl bg-white/5 px-4 py-3 text-sm text-white outline-none ring-1 transition placeholder:text-zinc-600 focus:ring-2 disabled:opacity-50 ${bad ? 'ring-red-500/60 focus:ring-red-500' : 'ring-white/10 focus:ring-amber-400'}`;
+
     return (
-        <div className="min-h-[calc(100vh-4rem)] bg-[#09090b] text-zinc-300 font-sans py-10 px-4 sm:px-6 relative overflow-hidden flex justify-center">
-            
-            {/* Subtle Ambient Glow to cure the "dullness" */}
-            <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-indigo-600/10 blur-[150px] rounded-full pointer-events-none z-0"></div>
+        <div className="min-h-screen bg-[#0a0a0c] px-4 py-10 font-['DM_Sans',sans-serif] text-zinc-100 sm:px-8">
+            <div className="mx-auto max-w-3xl">
+                <h1 className="font-['Bricolage_Grotesque',sans-serif] text-3xl font-extrabold tracking-tight text-white">Upload a video</h1>
+                <p className="mt-2 text-sm text-zinc-400">Add your video and a thumbnail, then give it a title viewers will click.</p>
 
-            {/* Main Upload Card */}
-            <div className="w-full max-w-3xl bg-[#18181b]/80 backdrop-blur-xl rounded-2xl border border-white/5 shadow-2xl relative z-10 overflow-hidden">
-                
-                {/* Header Section */}
-                <div className="px-8 py-6 border-b border-white/5 bg-white/[0.02]">
-                    <h2 className="text-2xl font-bold tracking-tight text-white flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-violet-500 flex items-center justify-center shadow-[0_0_15px_rgba(79,70,229,0.3)]">
-                            <FiUploadCloud className="text-white text-lg" /> 
-                        </div>
-                        Upload Video
-                    </h2>
-                    <p className="text-sm text-zinc-400 mt-2 pl-11">
-                        Share your high-quality content with your audience.
-                    </p>
-                </div>
-
-                {/* Form Section */}
-                <form onSubmit={handleSubmit(onSubmit)} className="p-8 space-y-8">
-                    
-                    {/* File Upload Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        
-                        {/* Video File Dropzone */}
-                        <div className="relative group border border-dashed border-white/10 rounded-xl p-6 flex flex-col items-center justify-center text-center hover:border-indigo-500/50 hover:bg-white/[0.02] transition-all cursor-pointer bg-[#09090b]/50 shadow-inner">
-                            <div className="w-12 h-12 rounded-full bg-[#18181b] border border-white/5 flex items-center justify-center mb-4 group-hover:scale-110 group-hover:border-indigo-500/30 transition-all shadow-lg">
-                                <FiVideo className="text-indigo-400 text-xl" />
-                            </div>
-                            <label className="cursor-pointer w-full">
-                                <span className="block mb-1 text-sm font-semibold text-zinc-200">Video File</span>
-                                <span className="block mb-4 text-xs text-zinc-500">MP4, WebM, or OGG</span>
-                                <input 
-                                    type="file" 
-                                    accept="video/*" 
-                                    disabled={loading}
-                                    {...register("videoFile", { required: true })} 
-                                    className="block w-full text-xs text-zinc-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-indigo-500/10 file:text-indigo-300 hover:file:bg-indigo-500/20 transition-colors cursor-pointer disabled:opacity-50" 
-                                />
-                            </label>
-                        </div>
-
-                        {/* Thumbnail Dropzone */}
-                        <div className="relative group border border-dashed border-white/10 rounded-xl p-6 flex flex-col items-center justify-center text-center hover:border-violet-500/50 hover:bg-white/[0.02] transition-all cursor-pointer bg-[#09090b]/50 shadow-inner">
-                            <div className="w-12 h-12 rounded-full bg-[#18181b] border border-white/5 flex items-center justify-center mb-4 group-hover:scale-110 group-hover:border-violet-500/30 transition-all shadow-lg">
-                                <FiImage className="text-violet-400 text-xl" />
-                            </div>
-                            <label className="cursor-pointer w-full">
-                                <span className="block mb-1 text-sm font-semibold text-zinc-200">Thumbnail</span>
-                                <span className="block mb-4 text-xs text-zinc-500">JPG, PNG, or WEBP</span>
-                                <input 
-                                    type="file" 
-                                    accept="image/*" 
-                                    disabled={loading}
-                                    {...register("thumbnail", { required: true })} 
-                                    className="block w-full text-xs text-zinc-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-white/5 file:text-zinc-300 hover:file:bg-white/10 transition-colors cursor-pointer disabled:opacity-50" 
-                                />
-                            </label>
-                        </div>
+                <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-6" noValidate>
+                    <div className="grid gap-5 md:grid-cols-2">
+                        <DropZone icon={<FiVideo />} title="Choose a video" hint="Drop a file here or click. MP4, WebM or OGG." accept="video/*"
+                            disabled={loading} file={videoFile} error={errors.videoFile} inputProps={register('videoFile', { required: 'Choose a video file' })} />
+                        <DropZone icon={<FiImage />} title="Choose a thumbnail" hint="JPG, PNG or WEBP. 16:9 works best." accept="image/*"
+                            disabled={loading} file={thumbFile} previewUrl={thumbUrl} error={errors.thumbnail} inputProps={register('thumbnail', { required: 'Choose a thumbnail' })} />
                     </div>
 
-                    {/* Text Inputs */}
-                    <div className="space-y-5">
-                        <div>
-                            <label className="block text-sm font-semibold text-zinc-300 mb-2">Title</label>
-                            <input 
-                                {...register("title", { required: true })} 
-                                disabled={loading}
-                                className="w-full px-4 py-3 bg-[#09090b]/50 border border-white/10 rounded-lg focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all text-zinc-100 placeholder:text-zinc-600 text-sm shadow-inner disabled:opacity-50" 
-                                placeholder="Give your video a catchy title" 
-                            />
-                        </div>
-                        
-                        <div>
-                            <label className="block text-sm font-semibold text-zinc-300 mb-2">Description</label>
-                            <textarea 
-                                {...register("description", { required: true })} 
-                                rows="5" 
-                                disabled={loading}
-                                className="w-full px-4 py-3 bg-[#09090b]/50 border border-white/10 rounded-lg focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all text-zinc-100 placeholder:text-zinc-600 text-sm resize-none custom-scrollbar shadow-inner disabled:opacity-50" 
-                                placeholder="Tell viewers about your video..." 
-                            />
-                        </div>
+                    <div>
+                        <label htmlFor="title" className="mb-1.5 block text-sm font-medium text-zinc-300">Title</label>
+                        <input id="title" disabled={loading} placeholder="What is this video about?" className={input(errors.title)} {...register('title', { required: 'Add a title' })} />
+                        {errors.title && <p className="mt-1.5 text-xs text-red-400">{errors.title.message}</p>}
+                    </div>
+                    <div>
+                        <label htmlFor="desc" className="mb-1.5 block text-sm font-medium text-zinc-300">Description</label>
+                        <textarea id="desc" rows={5} disabled={loading} placeholder="Add details, credits or links" className={`${input(errors.description)} resize-none`} {...register('description', { required: 'Add a description' })} />
+                        {errors.description && <p className="mt-1.5 text-xs text-red-400">{errors.description.message}</p>}
                     </div>
 
-                    {/* --- PROGRESS BAR UI --- */}
                     {loading && (
-                        <div className="pt-2 pb-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            <div className="flex justify-between text-sm mb-2 font-medium">
-                                <span className="text-zinc-300">
-                                    {isProcessing ? 'Processing video qualities...' : 'Uploading to server...'}
-                                </span>
-                                <span className="text-indigo-400">{uploadProgress}%</span>
+                        <div role="status" className="rounded-2xl bg-white/[0.04] p-5 ring-1 ring-white/5">
+                            <div className="mb-2 flex justify-between text-sm font-medium">
+                                <span className="text-zinc-200">{processing ? 'Processing your video' : 'Uploading'}</span>
+                                <span className="tabular-nums text-amber-400">{progress}%</span>
                             </div>
-                            <div className="w-full bg-white/5 rounded-full h-2.5 overflow-hidden border border-white/5">
-                                <div 
-                                    className="bg-gradient-to-r from-indigo-500 to-violet-500 h-full rounded-full transition-all duration-300 ease-out relative"
-                                    style={{ width: `${uploadProgress}%` }}
-                                >
-                                    {/* Shimmer effect inside the bar */}
-                                    <div className="absolute top-0 left-0 w-full h-full bg-white/20 animate-pulse"></div>
-                                </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                                <div className={`h-full rounded-full bg-amber-400 transition-[width] duration-300 ${processing ? 'animate-pulse' : ''}`} style={{ width: `${progress}%` }} />
                             </div>
-                            {isProcessing && (
-                                <p className="text-xs text-zinc-500 mt-3 animate-pulse">
-                                    Hang tight! This step might take a few minutes depending on the video size.
-                                </p>
-                            )}
+                            {processing && <p className="mt-3 text-xs text-zinc-500">Transcoding into multiple qualities. This can take a few minutes for long videos.</p>}
                         </div>
                     )}
 
-                    {/* Submit Area */}
-                    <div className="pt-6 border-t border-white/5 flex items-center justify-end gap-4">
-                        <button 
-                            type="button"
-                            onClick={() => reset()}
-                            disabled={loading}
-                            className="px-5 py-2.5 rounded-lg text-sm font-semibold text-zinc-400 hover:text-white hover:bg-white/5 transition-all disabled:opacity-50"
-                        >
-                            Cancel
-                        </button>
-                        <button 
-                            disabled={loading} 
-                            type="submit" 
-                            className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-8 py-2.5 rounded-lg text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[160px] shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_25px_rgba(79,70,229,0.5)] active:scale-95 border border-white/10"
-                        >
-                            {loading ? (
-                                <span className="flex items-center gap-2">
-                                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Uploading...
-                                </span>
-                            ) : (
-                                "Publish Video"
-                            )}
+                    <div className="flex justify-end gap-3 border-t border-white/10 pt-6">
+                        <button type="button" onClick={() => reset()} disabled={loading} className="rounded-xl px-5 py-3 text-sm font-semibold text-zinc-400 transition hover:bg-white/5 hover:text-white disabled:opacity-50">Clear form</button>
+                        <button type="submit" disabled={loading} className="flex min-w-[10rem] items-center justify-center gap-2 rounded-xl bg-amber-400 px-6 py-3 text-sm font-bold text-black transition hover:bg-amber-300 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-60">
+                            {loading && <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black" />}
+                            {loading ? 'Uploading' : 'Publish video'}
                         </button>
                     </div>
                 </form>
@@ -204,5 +140,4 @@ function UploadVideo() {
         </div>
     );
 }
-
 export default UploadVideo;

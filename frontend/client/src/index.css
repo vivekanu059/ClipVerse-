@@ -1,82 +1,29 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-/* src/index.css */
 
-.video-js .vjs-big-play-button {
-  z-index: 100 !important; /* Force it to the top */
-  pointer-events: auto !important; /* Ensure it catches clicks */
-}
-body {
-  background-color: #121212;
-  color: white;/* src/index.css */
-
-/* 1. Force the container to have a visible size */
-div[data-vjs-player] {
-  width: 100%;
-  aspect-ratio: 16 / 9; /* Maintains standard video shape */
-  background-color: #000; /* Black background so you can see it */
-  position: relative;
-  overflow: hidden;
-  border-radius: 8px;
+html,
+body,
+#root {
+  min-height: 100%;
+  background-color: #0a0a0c;
+  color: #fff;
+  color-scheme: dark; /* dark scrollbars and form controls */
 }
 
-/* 2. Force video.js internals to fill that container */
-.video-js {
-  width: 100% !important;
-  height: 100% !important;
-  position: absolute !important;
-  top: 0;
-  left: 0;
+/* Scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #0a0a0c; }
+::-webkit-scrollbar-thumb { background: #2a2a31; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a43; }
+
+/* Respect users who ask for less motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-/* 3. Ensure the Play Button is huge and clickable */
-.vjs-big-play-button {
-  top: 50% !important;
-  left: 50% !important;
-  transform: translate(-50%, -50%);
-  background-color: rgba(174, 122, 255, 0.7) !important; /* Your theme purple */
-  border: none !important;
-  width: 80px !important;
-  height: 80px !important;
-  border-radius: 50% !important;
-  line-height: 80px !important;
-  font-size: 40px !important;
-}
-}
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-}
-::-webkit-scrollbar-track {
-  background: #121212; 
-}
-::-webkit-scrollbar-thumb {
-  background: #2d2d2d; 
-  border-radius: 4px;
-}
-
-
-/* src/index.css */
-
-/* Quality Selector Styling */
-.vjs-menu-button-popup .vjs-menu {
-  width: 10em;
-  left: -3em;
-}
-
-.vjs-menu-button-popup .vjs-menu .vjs-menu-content {
-  background-color: rgba(43, 51, 63, 0.9); /* Dark background */
-  max-height: 15em;
-}
-
-.vjs-quality-selector .vjs-icon-placeholder {
-  font-family: VideoJS;
-  font-weight: normal;
-  font-style: normal;
-}
-
-/* Ensure the Playback Rate button is visible */
-.video-js .vjs-playback-rate {
-  display: block !important;
-}
+/* The video player is sized and styled inside components/VideoPlayer.jsx */

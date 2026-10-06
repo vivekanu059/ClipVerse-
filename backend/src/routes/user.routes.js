@@ -1,7 +1,7 @@
 import{Router} from "express";
 import {loginUser, logoutUser, registerUser,refreshAccessToken, changeCurrentPassord, getCurrentUser, updateAccountDetails, updateUserAvatar, updateCoverImage, getUserChannelProfile, getWatchHistory} from "../controllers/user.controllers.js";
 import { upload } from "../middlewares/multer.middlewares.js";
-import {verifyJWT} from "../middlewares/auth.middleware.js";
+import {verifyJWT, optionalJWT} from "../middlewares/auth.middleware.js";
 import { clearWatchHistory } from "../controllers/user.controllers.js";
 import { googleAuth } from "../controllers/user.controllers.js";
 
@@ -37,7 +37,7 @@ router.route("/avatar").patch(verifyJWT,upload.single("avatar"),updateUserAvatar
 
 router.route("/cover-Image").patch(verifyJWT,upload.single("coverImage"),updateCoverImage)
 
-router.route("/c/:username").get(verifyJWT,getUserChannelProfile);
+router.route("/c/:username").get(optionalJWT,getUserChannelProfile);
 
 router.route("/History").get(verifyJWT,getWatchHistory);
 router.route("/history/clear").delete(verifyJWT, clearWatchHistory);

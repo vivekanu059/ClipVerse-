@@ -215,11 +215,8 @@ const logoutUser = asyncHandler(async (req, res) => {
 });
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
-    console.log("1. Refresh Endpoint Hit");
-    console.log("2. Cookies Received:", req.cookies);
-    console.log("3. Refresh Token in Cookie:", req.cookies?.refreshToken)
   try {
-    const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
+    const incomingRefreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
    
     if (!incomingRefreshToken) {
       throw new ApiError(401, "unauthorised request");
@@ -239,7 +236,8 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
       throw new ApiError(401, "refresh token is expired or used");
     }
       
-    const { accessToken, newRefreshToken } = await generateAccessAndRefreshToken(user._id);
+    // generateAccessAndRefreshToken returns { accessToken, refreshToken }, so rename it here
+    const { accessToken, refreshToken: newRefreshToken } = await generateAccessAndRefreshToken(user._id);
       
     return res.status(200)
       // Updated cookie options here
@@ -384,7 +382,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
       $lookup: {
         from: "subscriptions",
         localField: "_id",
-        foreignField: "channel",
+        foreignField: "subscribedTo",
         as: "subscribers"
       }
     },

@@ -1,5 +1,5 @@
 import {Router} from "express";
-import {verifyJWT} from "../middlewares/auth.middleware.js"
+import {verifyJWT, optionalJWT} from "../middlewares/auth.middleware.js"
 import {uploadVideo,getAllVideos,getVideoById,updateVideoDetails,deleteVideo} from "../controllers/video.controller.js";
 import {upload} from "../middlewares/multer.middlewares.js";
 
@@ -12,10 +12,10 @@ router.route("/upload").post(verifyJWT,upload.fields(
 
 // get all video
 
-router.route("/").get(getAllVideos);
+router.route("/").get(optionalJWT, getAllVideos);
 
 // get specific video
-router.route("/:videoId").get(verifyJWT, getVideoById);
+router.route("/:videoId").get(optionalJWT, getVideoById);
 
 // update&delete
 

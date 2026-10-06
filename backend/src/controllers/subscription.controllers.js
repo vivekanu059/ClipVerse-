@@ -61,7 +61,7 @@ const getAllSubscribers=asyncHandler(async(req,res)=>{
     const {channelId}=req.params;
     const subscribers=await Subscription.find({subscribedTo:channelId}).populate(
         "subscriber",    //this .populate subscriber joins the subscription models with the user model to get the data as in subscriber we use the reference of user model hence in that subscriber id is stored as value which links to any user in the user model. 
-        "username, fullName,avatar"
+        "username fullName avatar"
     );
     return res.status(200).json(new ApiResponse(200,subscribers,"Subscribers fetched successfully"));
 });

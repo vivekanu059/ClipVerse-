@@ -22,4 +22,12 @@ const storage = multer.diskStorage({
   },
 });
 
-export const upload = multer({ storage });
+// Only accept the right kind of file for each field
+const fileFilter = (req, file, cb) => {
+  const wantsVideo = file.fieldname === "videoFile";
+  const ok = wantsVideo ? file.mimetype.startsWith("video/") : file.mimetype.startsWith("image/");
+  cb(ok ? null : new Error(`Invalid file type for ${file.fieldname}`), ok);
+};
+
+// 500 MB cap, so one request can't fill the disk
+export const upload = multer({ storage, fileFilter, limits: { fileSize: 500 * 1024 * 1024 } });

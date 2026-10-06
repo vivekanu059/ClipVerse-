@@ -1,162 +1,116 @@
-import React, { useEffect, useState } from 'react';
-import axiosInstance from '../utils/axiosInstance';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FiClock, FiTrash2, FiPlayCircle } from 'react-icons/fi';
-
-// 1. Native helper to format duration (mm:ss)
-const formatDuration = (seconds) => {
-    if (!seconds) return "0:00";
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-    return `${m}:${s.toString().padStart(2, '0')}`;
-};
-
-// 2. Custom helper to replace timeago.js! 
-const formatTimeAgo = (dateString) => {
-    if (!dateString) return "";
-    const seconds = Math.floor((new Date() - new Date(dateString)) / 1000);
-    
-    let interval = seconds / 31536000;
-    if (interval > 1) return Math.floor(interval) + " years ago";
-    interval = seconds / 2592000;
-    if (interval > 1) return Math.floor(interval) + " months ago";
-    interval = seconds / 86400;
-    if (interval > 1) return Math.floor(interval) + " days ago";
-    interval = seconds / 3600;
-    if (interval > 1) return Math.floor(interval) + " hours ago";
-    interval = seconds / 60;
-    if (interval > 1) return Math.floor(interval) + " minutes ago";
-    
-    return "just now";
-};
+import { FiClock, FiTrash2, FiPlay, FiSearch } from 'react-icons/fi';
+import toast from 'react-hot-toast';
+import axiosInstance from '../utils/axiosInstance';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { formatDuration, timeAgo, compact } from '../utils/format';
 
 function WatchHistory() {
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        fetchHistory();
-    }, []);
+    const [query, setQuery] = useState('');
+    const [confirming, setConfirming] = useState(false);
 
     const fetchHistory = async () => {
         try {
-            const res = await axiosInstance.get("/users/history");
+            const res = await axiosInstance.get('/users/history');
             setHistory(res.data.data);
-        } catch (error) {
-            console.error("Failed to fetch history", error);
+        } catch (e) {
+            console.error('Failed to fetch history', e);
         } finally {
             setLoading(false);
         }
     };
+    useEffect(() => { fetchHistory(); }, []);
 
     const clearHistory = async () => {
-        if (!window.confirm("Are you sure you want to clear your entire watch history?")) return;
-        
+        setConfirming(false);
         setHistory([]);
         try {
-            await axiosInstance.delete("/users/history/clear");
-        } catch (error) {
-            console.error("Failed to clear history", error);
-            fetchHistory(); 
+            await axiosInstance.delete('/users/history/clear');
+            toast.success('Watch history cleared');
+        } catch {
+            toast.error("Couldn't clear your history");
+            fetchHistory();
         }
     };
 
+    const shown = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        return history.filter((v) => !q || v.title?.toLowerCase().includes(q) || v.owner?.username?.toLowerCase().includes(q));
+    }, [history, query]);
+
     if (loading) {
         return (
-            <div className="flex justify-center items-center min-h-[calc(100vh-4rem)] bg-[#000000]">
-                <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-indigo-500"></div>
+            <div className="mx-auto max-w-4xl space-y-6 bg-[#0a0a0c] px-4 py-12">
+                {[0, 1, 2].map((i) => (
+                    <div key={i} className="flex animate-pulse gap-5">
+                        <div className="aspect-video w-56 rounded-xl bg-white/5" />
+                        <div className="flex-1 space-y-3 pt-2"><div className="h-5 w-2/3 rounded bg-white/5" /><div className="h-3 w-1/3 rounded bg-white/5" /></div>
+                    </div>
+                ))}
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-[#000000] text-neutral-100 font-sans pb-12">
-            <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-10">
-                
-                {/* Header Area */}
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-4 border-b border-white/10 pb-6">
+        <div className="min-h-screen bg-[#0a0a0c] font-['DM_Sans',sans-serif] text-zinc-100">
+            <div className="mx-auto max-w-4xl px-4 py-10 sm:px-8">
+                <div className="flex flex-wrap items-end justify-between gap-4">
                     <div>
-                        <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-3">
-                            <FiClock className="text-indigo-500" /> Watch History
-                        </h1>
-                        <p className="text-zinc-400 mt-2 text-sm">Videos you have watched recently.</p>
+                        <h1 className="font-['Bricolage_Grotesque',sans-serif] text-3xl font-extrabold tracking-tight text-white">Watch history</h1>
+                        <p className="mt-1.5 text-sm text-zinc-500">{history.length} {history.length === 1 ? 'video' : 'videos'}, most recent first</p>
                     </div>
-                    
                     {history.length > 0 && (
-                        <button 
-                            onClick={clearHistory}
-                            className="flex items-center gap-2 text-sm font-medium text-zinc-400 hover:text-red-400 bg-white/5 hover:bg-red-500/10 px-4 py-2 rounded-lg transition-all border border-transparent hover:border-red-500/20"
-                        >
-                            <FiTrash2 /> Clear watch history
+                        <button onClick={() => setConfirming(true)} className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-zinc-400 ring-1 ring-white/10 transition hover:bg-red-500/10 hover:text-red-300 hover:ring-red-500/30">
+                            <FiTrash2 /> Clear history
                         </button>
                     )}
                 </div>
 
-                {/* History List */}
+                {history.length > 0 && (
+                    <label className="relative mt-8 block">
+                        <FiSearch className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" />
+                        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search your history"
+                            className="w-full rounded-xl bg-white/5 py-3 pl-11 pr-4 text-sm text-white outline-none ring-1 ring-transparent transition placeholder:text-zinc-500 focus:ring-amber-400/70" />
+                    </label>
+                )}
+
                 {history.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-20 text-center">
-                        <div className="w-24 h-24 bg-white/5 rounded-full flex items-center justify-center mb-6">
-                            <FiClock className="text-4xl text-zinc-600" />
-                        </div>
-                        <h2 className="text-xl font-semibold text-white mb-2">Keep track of what you watch</h2>
-                        <p className="text-zinc-400 max-w-sm">
-                            Watch history isn't viewable when it's empty. Go watch some amazing videos!
-                        </p>
-                        <Link to="/" className="mt-6 bg-white text-black px-6 py-2.5 rounded-full font-semibold hover:bg-zinc-200 transition-colors">
-                            Explore Videos
-                        </Link>
+                    <div className="py-28 text-center">
+                        <FiClock className="mx-auto mb-5 text-5xl text-zinc-700" />
+                        <h2 className="text-xl font-semibold text-white">Nothing watched yet</h2>
+                        <p className="mx-auto mt-2 max-w-xs text-sm text-zinc-500">Videos you play will show up here so you can pick up where you left off.</p>
+                        <Link to="/" className="mt-6 inline-block rounded-full bg-amber-400 px-6 py-2.5 text-sm font-semibold text-black hover:bg-amber-300">Find something to watch</Link>
                     </div>
+                ) : shown.length === 0 ? (
+                    <p className="py-20 text-center text-zinc-500">No videos match "{query}".</p>
                 ) : (
-                    <div className="flex flex-col gap-5">
-                        {history.map((video) => (
-                            <Link 
-                                to={`/watch/${video._id}`} 
-                                key={video._id} 
-                                className="group flex flex-col sm:flex-row gap-4 sm:gap-6 p-3 rounded-xl hover:bg-white/[0.03] border border-transparent hover:border-white/5 transition-all"
-                            >
-                                {/* Thumbnail */}
-                                <div className="relative w-full sm:w-64 aspect-video rounded-lg overflow-hidden bg-[#111] shrink-0">
-                                    <img 
-                                        src={video.thumbnail} 
-                                        alt={video.title} 
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                    />
-                                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                        <FiPlayCircle className="text-4xl text-white drop-shadow-lg" />
+                    <ul className="mt-6 space-y-1">
+                        {shown.map((v) => (
+                            <li key={v._id}>
+                                <Link to={`/watch/${v._id}`} className="group flex flex-col gap-4 rounded-2xl p-3 transition hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400 sm:flex-row sm:gap-6">
+                                    <div className="relative aspect-video w-full shrink-0 overflow-hidden rounded-xl bg-zinc-900 sm:w-60">
+                                        <img src={v.thumbnail} alt="" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+                                        <span className="absolute inset-0 grid place-items-center bg-black/30 opacity-0 transition group-hover:opacity-100"><FiPlay className="text-3xl text-white" /></span>
+                                        {v.duration > 0 && <span className="absolute bottom-2 right-2 rounded-md bg-black/75 px-1.5 py-0.5 text-[11px] font-medium tabular-nums">{formatDuration(v.duration)}</span>}
                                     </div>
-                                    <span className="absolute bottom-1.5 right-1.5 bg-black/80 backdrop-blur-md text-white px-1.5 py-0.5 text-xs font-medium rounded tracking-wide">
-                                        {formatDuration(video.duration)}
-                                    </span>
-                                </div>
-
-                                {/* Video Details */}
-                                <div className="flex flex-col justify-start py-1 w-full overflow-hidden">
-                                    <h3 className="text-lg sm:text-xl font-semibold text-zinc-100 group-hover:text-indigo-400 transition-colors line-clamp-2 leading-tight mb-2">
-                                        {video.title}
-                                    </h3>
-                                    
-                                    <div className="flex items-center gap-2 text-sm text-zinc-400 mb-3">
-                                        <span className="font-medium hover:text-white transition-colors">{video.owner?.username}</span>
-                                        <span>•</span>
-                                        <span>{video.views} views</span>
-                                        <span>•</span>
-                                        {/* Using our new custom function here! */}
-                                        <span>{formatTimeAgo(video.createdAt)}</span>
+                                    <div className="min-w-0 py-1">
+                                        <h3 className="line-clamp-2 text-lg font-semibold leading-snug text-zinc-100 group-hover:text-white">{v.title}</h3>
+                                        <p className="mt-1.5 text-sm text-zinc-500">{v.owner?.username} · {compact(v.views)} plays · {timeAgo(v.createdAt)}</p>
+                                        <p className="mt-3 hidden line-clamp-2 text-sm leading-relaxed text-zinc-500 sm:block">{v.description}</p>
                                     </div>
-
-                                    <p className="text-sm text-zinc-500 line-clamp-2 hidden sm:block">
-                                        {video.description}
-                                    </p>
-                                </div>
-                            </Link>
+                                </Link>
+                            </li>
                         ))}
-                    </div>
+                    </ul>
                 )}
             </div>
+
+            <ConfirmDialog open={confirming} title="Clear your watch history?" body="This removes every video from your history. It can't be undone."
+                confirmLabel="Clear history" onConfirm={clearHistory} onCancel={() => setConfirming(false)} />
         </div>
     );
 }
-
 export default WatchHistory;

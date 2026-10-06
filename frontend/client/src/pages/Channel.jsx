@@ -1,178 +1,139 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import axiosInstance from '../utils/axiosInstance';
-import { FiVideo, FiUsers, FiUserCheck, FiUserPlus } from 'react-icons/fi';
-import { format } from 'timeago.js';
+import { FiVideo, FiUserCheck, FiUserPlus, FiSettings } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import axiosInstance from '../utils/axiosInstance';
+import VideoCard from '../components/VideoCard';
+import { compact } from '../utils/format';
 
 function Channel() {
     const { username } = useParams();
-    const { user: currentUser } = useSelector(state => state.auth);
-    
+    const { user: currentUser } = useSelector((state) => state.auth);
     const [channel, setChannel] = useState(null);
     const [videos, setVideos] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [sort, setSort] = useState('latest');
+    const [busy, setBusy] = useState(false);
 
     useEffect(() => {
-        const fetchChannelData = async () => {
+        let cancelled = false;
+        (async () => {
             setLoading(true);
             try {
-                // 1. Fetch Channel Profile Data
-                const channelRes = await axiosInstance.get(`/users/c/${username}`);
-                const channelData = channelRes.data.data;
-                setChannel(channelData);
-
-                // 2. Fetch Videos for this specific channel
-                if (channelData?._id) {
-                    const videoRes = await axiosInstance.get(`/videos?userId=${channelData._id}`);
-                    setVideos(videoRes.data.data.docs || videoRes.data.data);
+                const { data } = await axiosInstance.get(`/users/c/${username}`);
+                if (cancelled) return;
+                setChannel(data.data);
+                if (data.data?._id) {
+                    const v = await axiosInstance.get(`/videos?userId=${data.data._id}`);
+                    if (!cancelled) setVideos(v.data.data.docs || v.data.data);
                 }
-            } catch (error) {
-                console.error("Error fetching channel:", error);
-                toast.error("Channel not found");
+            } catch {
+                if (!cancelled) { setChannel(null); toast.error('Channel not found'); }
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
-        };
-
-        fetchChannelData();
+        })();
+        return () => { cancelled = true; };
     }, [username]);
 
-    const handleSubscribe = async () => {
-        if (!currentUser) return toast.error("Please login to subscribe");
-        
+    const sorted = useMemo(() => [...videos].sort((a, b) =>
+        sort === 'popular' ? b.views - a.views : new Date(b.createdAt) - new Date(a.createdAt)), [videos, sort]);
+
+    const toggleSubscribe = async () => {
+        if (!currentUser) return toast.error('Log in to subscribe');
+        if (busy) return;
+        const apply = (p) => ({ ...p, isSubscribed: !p.isSubscribed, subscribersCount: (p.subscribersCount || 0) + (p.isSubscribed ? -1 : 1) });
+        const was = !!channel.isSubscribed;
+        setBusy(true);
+        setChannel(apply);
         try {
-            await axiosInstance.post(`/subscriptions/c/${channel._id}`);
-            // Toggle local state to update UI instantly
-            setChannel(prev => ({
-                ...prev,
-                isSubscribed: !prev.isSubscribed,
-                subscribersCount: prev.isSubscribed 
-                    ? prev.subscribersCount - 1 
-                    : prev.subscribersCount + 1
-            }));
-        // eslint-disable-next-line no-unused-vars
-        } catch (error) {
-            toast.error("Failed to update subscription");
+            if (was) await axiosInstance.delete(`/subscriptions/unsubscribe/${channel._id}`);
+            else await axiosInstance.post(`/subscriptions/subscribe/${channel._id}`);
+        } catch {
+            setChannel(apply);
+            toast.error("Couldn't update your subscription");
+        } finally {
+            setBusy(false);
         }
     };
 
-    if (loading) return <div className="p-8 text-center text-zinc-400">Loading channel...</div>;
-    if (!channel) return <div className="p-8 text-center text-zinc-400">Channel does not exist.</div>;
+    if (loading) {
+        return (
+            <div className="min-h-screen animate-pulse bg-[#0a0a0c]">
+                <div className="h-48 bg-white/5 md:h-72" />
+                <div className="mx-auto -mt-14 max-w-7xl px-6"><div className="h-28 w-28 rounded-full bg-white/10 ring-4 ring-[#0a0a0c]" /></div>
+            </div>
+        );
+    }
+    if (!channel) {
+        return (
+            <div className="grid min-h-[60vh] place-items-center bg-[#0a0a0c] text-center">
+                <div>
+                    <p className="text-lg font-semibold text-white">This channel doesn't exist</p>
+                    <Link to="/" className="mt-3 inline-block text-sm font-medium text-amber-400 hover:underline">Back to home</Link>
+                </div>
+            </div>
+        );
+    }
 
     const isOwner = currentUser?._id === channel._id;
+    const totalViews = videos.reduce((n, v) => n + (v.views || 0), 0);
 
     return (
-        <div className="w-full bg-[#000000] min-h-screen text-white pb-10">
-            
-            {/* --- 1. CHANNEL BANNER --- */}
-            <div className="w-full h-40 sm:h-60 md:h-72 bg-zinc-900 relative">
-                {channel.coverImage ? (
-                    <img 
-                        src={channel.coverImage} 
-                        alt="Cover" 
-                        className="w-full h-full object-cover"
-                    />
-                ) : (
-                    // Fallback pattern if no cover image
-                    <div className="w-full h-full bg-gradient-to-r from-indigo-900/50 to-violet-900/50 flex items-center justify-center">
-                        <FiVideo className="text-6xl text-white/10" />
-                    </div>
-                )}
+        <div className="min-h-screen bg-[#0a0a0c] pb-16 text-zinc-100 font-['DM_Sans',sans-serif]">
+            <div className="relative h-48 overflow-hidden bg-zinc-900 sm:h-64 md:h-80">
+                {channel.coverImage
+                    ? <img src={channel.coverImage} alt="" className="h-full w-full object-cover" />
+                    : <div className="h-full w-full bg-[radial-gradient(ellipse_at_top_left,#3a2a0a,#0a0a0c_70%)]" />}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0c] via-transparent to-transparent" />
             </div>
 
-            {/* --- 2. CHANNEL HEADER DETAILS --- */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 relative">
-                <div className="flex flex-col sm:flex-row items-center sm:items-end gap-6 -mt-12 sm:-mt-16 mb-8">
-                    
-                    {/* Avatar */}
-                    <img 
-                        src={channel.avatar} 
-                        alt={channel.username} 
-                        className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover border-4 border-black bg-zinc-800 z-10"
-                    />
-                    
-                    {/* Channel Info */}
-                    <div className="flex-1 text-center sm:text-left pt-2 sm:pt-0">
-                        <h1 className="text-2xl sm:text-3xl font-bold">{channel.fullName}</h1>
-                        <p className="text-zinc-400 font-medium mt-1">@{channel.username}</p>
-                        <p className="text-zinc-500 text-sm mt-1 flex items-center justify-center sm:justify-start gap-3">
-                            <span>{channel.subscribersCount || 0} subscribers</span>
-                            <span>•</span>
-                            <span>{videos.length} videos</span>
+            <div className="mx-auto max-w-7xl px-4 sm:px-8">
+                <div className="-mt-14 flex flex-col items-center gap-5 sm:-mt-16 sm:flex-row sm:items-end">
+                    <img src={channel.avatar} alt={channel.username} className="relative z-10 h-28 w-28 rounded-full bg-zinc-800 object-cover ring-4 ring-[#0a0a0c] sm:h-36 sm:w-36" />
+                    <div className="flex-1 text-center sm:pb-2 sm:text-left">
+                        <h1 className="font-['Bricolage_Grotesque',sans-serif] text-3xl font-extrabold tracking-tight text-white sm:text-4xl">{channel.fullName}</h1>
+                        <p className="mt-1 text-zinc-400">@{channel.username}</p>
+                        <p className="mt-2 text-sm text-zinc-500">
+                            <b className="font-semibold text-zinc-200">{compact(channel.subscribersCount)}</b> subscribers &nbsp;
+                            <b className="font-semibold text-zinc-200">{videos.length}</b> videos &nbsp;
+                            <b className="font-semibold text-zinc-200">{compact(totalViews)}</b> plays
                         </p>
                     </div>
+                    {isOwner ? (
+                        <Link to="/settings" className="inline-flex items-center gap-2 rounded-full bg-white/10 px-5 py-2.5 text-sm font-semibold text-white ring-1 ring-white/10 transition hover:bg-white/15 sm:mb-2">
+                            <FiSettings /> Customize channel
+                        </Link>
+                    ) : (
+                        <button onClick={toggleSubscribe} aria-pressed={!!channel.isSubscribed}
+                            className={`inline-flex min-w-[9.5rem] items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold transition active:scale-95 sm:mb-2 ${channel.isSubscribed ? 'bg-white/10 text-white ring-1 ring-white/10 hover:bg-white/15' : 'bg-amber-400 text-black hover:bg-amber-300'}`}>
+                            {channel.isSubscribed ? <><FiUserCheck /> Subscribed</> : <><FiUserPlus /> Subscribe</>}
+                        </button>
+                    )}
+                </div>
 
-                    {/* Action Button (Subscribe / Edit) */}
-                    <div className="mb-2">
-                        {isOwner ? (
-                            <Link to="/settings" className="bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-2.5 rounded-full font-semibold transition-colors border border-white/10">
-                                Customize Channel
-                            </Link>
-                        ) : (
-                            <button 
-                                onClick={handleSubscribe}
-                                className={`px-6 py-2.5 rounded-full font-semibold transition-colors flex items-center gap-2 ${
-                                    channel.isSubscribed 
-                                    ? "bg-zinc-800 hover:bg-zinc-700 text-white" 
-                                    : "bg-white text-black hover:bg-zinc-200"
-                                }`}
-                            >
-                                {channel.isSubscribed ? <><FiUserCheck /> Subscribed</> : <><FiUserPlus /> Subscribe</>}
-                            </button>
-                        )}
+                <div className="mt-10 flex items-center justify-between border-b border-white/10">
+                    <h2 className="border-b-2 border-amber-400 pb-3 text-sm font-semibold text-white">Videos</h2>
+                    <div className="flex gap-1 pb-2">
+                        {[['latest', 'Latest'], ['popular', 'Popular']].map(([id, label]) => (
+                            <button key={id} onClick={() => setSort(id)} className={`rounded-full px-3 py-1 text-sm transition ${sort === id ? 'bg-white text-black font-semibold' : 'text-zinc-400 hover:text-white'}`}>{label}</button>
+                        ))}
                     </div>
                 </div>
 
-                {/* --- 3. TABS --- */}
-                <div className="border-b border-white/10 flex gap-8 mb-6">
-                    <button className="pb-3 border-b-2 border-white font-medium text-white">Videos</button>
-                    {/* You can add 'Playlists', 'About', etc. here later */}
-                </div>
-
-                {/* --- 4. VIDEO GRID --- */}
-                {videos.length === 0 ? (
-                    <div className="text-center py-20 text-zinc-500">
-                        <FiVideo className="text-5xl mx-auto mb-4 opacity-20" />
-                        <p>This channel has no videos.</p>
+                {sorted.length === 0 ? (
+                    <div className="py-24 text-center text-zinc-500">
+                        <FiVideo className="mx-auto mb-4 text-5xl opacity-30" />
+                        <p>{isOwner ? 'Upload your first video to fill this page.' : "This channel hasn't posted yet."}</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-8">
-                        {videos.map((video) => (
-                            <Link to={`/watch/${video._id}`} key={video._id} className="group cursor-pointer">
-                                <div className="relative aspect-video bg-zinc-900 rounded-xl overflow-hidden mb-3">
-                                    <img 
-                                        src={video.thumbnail} 
-                                        alt={video.title} 
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                    />
-                                    {/* Duration Badge */}
-                                    <span className="absolute bottom-1.5 right-1.5 bg-black/80 text-white text-xs font-medium px-1.5 py-0.5 rounded">
-                                        {formatDuration(video.duration)}
-                                    </span>
-                                </div>
-                                <h3 className="text-white font-semibold line-clamp-2 leading-tight group-hover:text-indigo-400 transition-colors">
-                                    {video.title}
-                                </h3>
-                                <p className="text-zinc-500 text-sm mt-1">
-                                    {video.views} views • {format(video.createdAt)}
-                                </p>
-                            </Link>
-                        ))}
+                    <div className="mt-8 grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {sorted.map((v) => <VideoCard key={v._id} video={v} showOwner={false} />)}
                     </div>
                 )}
             </div>
         </div>
     );
 }
-
-// Helper to format seconds into mm:ss
-const formatDuration = (seconds) => {
-    if (!seconds) return "0:00";
-    const date = new Date(0);
-    date.setSeconds(seconds);
-    return date.toISOString().substr(14, 5);
-};
-
 export default Channel;
